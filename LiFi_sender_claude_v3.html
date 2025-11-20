@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Li-Fi Flashlight Sender</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+        margin-top: 50px;
+    }
+
+    input {
+        padding: 10px;
+        font-size: 18px;
+        width: 80%;
+        margin-bottom: 20px;
+    }
+
+    button {
+        padding: 12px 25px;
+        font-size: 18px;
+        border: none;
+        background: #4CAF50;
+        color: white;
+        border-radius: 8px;
+        cursor: pointer;
+        margin: 10px;
+    }
+</style>
+</head>
+
+<body>
+
+<h1>Li-Fi Flashlight Sender</h1>
+<p>Real Phone Flashlight · Bit Duration: <b>110 ms</b></p>
+
+<input id="msg" type="text" placeholder="Enter text to transmit">
+
+<br>
+<button onclick="startTorch()">Enable Flashlight Access</button>
+<button onclick="sendMessage()">Send Message</button>
+
+<script>
+let stream = null;
+let videoTrack = null;
+let torchOn = false;
+
+const BIT_DURATION = 110; // match your receiver timing
+
+// --------------------------------------------
+// ENABLE FLASHLIGHT ACCESS
+// --------------------------------------------
+async function startTorch() {
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "environment" }
+        });
+
+        videoTrack = stream.getVideoTracks()[0];
+        const capabilities = videoTrack.getCapabilities();
+
+        if (!capabilities.torch) {
+            alert("Torch/Flashlight NOT supported on this device.");
+            return;
+        }
+
+        // Turn off initially
+        await videoTrack.applyConstraints({ advanced: [{ torch: false }] });
+        alert("Flashlight access enabled!");
+
+    } catch (e) {
+        console.error(e);
+        alert("Error accessing flashlight (HTTPS only, Android only).");
+    }
+}
+
+// Turn flashlight on/off
+async function setTorch(state) {
+    if (!videoTrack) return;
+    try {
+        await videoTrack.applyConstraints({ advanced: [{ torch: state }] });
+    } catch (e) {
+        console.error("Torch error:", e);
+    }
+}
+
+// Send single bit
+function transmitBit(bit, delay) {
+    setTimeout(() => {
+        setTorch(bit === 1);
+    }, delay);
+}
+
+// Convert ASCII to 8-bit array
+function charToBits(c) {
+    let code = c.charCodeAt(0);
+    let bits = [];
+    for (let i = 7; i >= 0; i--) {
+        bits.push((code >> i) & 1);
+    }
+    return bits;
+}
+
+// --------------------------------------------
+// SEND FULL MESSAGE USING FLASHLIGHT
+// --------------------------------------------
+function sendMessage() {
+    if (!videoTrack) {
+        alert("Enable flashlight first!");
+        return;
+    }
+
+    let text = document.getElementById("msg").value;
+    if (!text.length) {
+        alert("Enter a message.");
+        return;
+    }
+
+    let t = 0;
+
+    // START: 5 HIGH bits
+    for (let i = 0; i < 5; i++) {
+        transmitBit(1, t);
+        t += BIT_DURATION;
+    }
+
+    // Gap LOW
+    transmitBit(0, t);
+    t += BIT_DURATION;
+
+    // Message bytes
+    for (let ch of text) {
+        let bits = charToBits(ch);
+        for (let b of bits) {
+            transmitBit(b, t);
+            t += BIT_DURATION;
+        }
+    }
+
+    // STOP: 3 LOW bits
+    for (let i = 0; i < 3; i++) {
+        transmitBit(0, t);
+        t += BIT_DURATION;
+    }
+
+    // Ensure final state = OFF
+    setTimeout(() => setTorch(false), t + BIT_DURATION);
+
+    alert("Transmitting...");
+}
+</script>
+
+</body>
+</html>
